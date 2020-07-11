@@ -3,6 +3,8 @@ import argparse
 import struct
 import socket
 import logging
+logging.basicConfig(filename=None, format='%(asctime)s %(levelname)s:%(message)s', level=logging.INFO)
+logging.basicConfig()
 
 SOCKS_VERSION = 5
 
@@ -23,30 +25,21 @@ async def get_available_methods(n, reader):
         methods.append(ord(await reader.read(1)))
     return methods
 
-async def write_to_local(remote_reader, writer):
+async def write_to(reader, writer):
     while True:
-        buf = await remote_reader.read(4096)
+        buf = await reader.read(4096)
         if not buf:
             writer.close()
             break
         writer.write(buf)
         await writer.drain()
 
-async def write_to_remote(reader, remote_writer):
-    while True:
-        buf2 = await reader.read(4096)
-        if not buf2:
-            remote_writer.close()
-            break
-        remote_writer.write(buf2)
-        await remote_writer.drain()
-
 async def handle_connection(reader, writer):
     def generate_failed_reply(address_type, error_number):
         return struct.pack("!BBBBIH", SOCKS_VERSION, error_number, 0, address_type, 0, 0)
 
     address = writer.get_extra_info('peername')
-    print('Accepted connection from {}'.format(address))
+    logging.info('Accepted connection from {}'.format(address))
     header = await reader.read(2)
     version, nmethods = struct.unpack("!BB", header)
     
@@ -78,7 +71,6 @@ async def handle_connection(reader, writer):
     try:
         if cmd == 1:
             remote_reader, remote_writer = await asyncio.open_connection(addr, port)
-            print('Connected to {} {}'.format(addr, port))
         else:
             writer.close()
         reply = struct.pack("!BBBBIH", SOCKS_VERSION, 0, 0, 1, struct.unpack("!I", socket.inet_aton(addr))[0], port)
@@ -88,8 +80,9 @@ async def handle_connection(reader, writer):
     writer.write(reply)
     if reply[1] == 0 and cmd == 1:
         remote_reader, remote_writer = await asyncio.open_connection(addr, port)
-        remote_to_local_t = asyncio.create_task(write_to_local(remote_reader, writer))
-        local_to_remote_t = asyncio.create_task(write_to_remote(reader, remote_writer))
+        logging.info("Connected to {}:{}".format(addr, port))
+        remote_to_local_t = asyncio.create_task(write_to(remote_reader, writer))
+        local_to_remote_t = asyncio.create_task(write_to(reader, remote_writer))
         await asyncio.gather(
             remote_to_local_t,
             local_to_remote_t
@@ -100,7 +93,7 @@ async def main(address):
     server = await asyncio.start_server(
             handle_connection, *address)
     addr = server.sockets[0].getsockname()
-    print('Listening at {}'.format(addr))
+    logging.info('Listening at {}'.format(addr))
     async with server:
         await server.serve_forever()
 
