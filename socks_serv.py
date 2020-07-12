@@ -4,7 +4,6 @@ import struct
 import socket
 import logging
 logging.basicConfig(filename=None, format='%(asctime)s %(levelname)s:%(message)s', level=logging.INFO)
-logging.basicConfig()
 
 SOCKS_VERSION = 5
 
@@ -79,7 +78,6 @@ async def handle_connection(reader, writer):
         reply = generate_failed_reply(address_type, t)
     writer.write(reply)
     if reply[1] == 0 and cmd == 1:
-        remote_reader, remote_writer = await asyncio.open_connection(addr, port)
         logging.info("Connected to {}:{}".format(addr, port))
         remote_to_local_t = asyncio.create_task(write_to(remote_reader, writer))
         local_to_remote_t = asyncio.create_task(write_to(reader, remote_writer))
